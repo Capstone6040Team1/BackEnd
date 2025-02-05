@@ -3,8 +3,10 @@ from openpyxl import load_workbook
 
 app = Flask(__name__)
 
+ML_API_URL = "http://your-ml-server.com/predict"
+
 # Load the Excel file
-excel_file = r"C:\Users\shiva\OneDrive\Desktop\emp.xlsx"
+excel_file = r"./emp.xlsx"
 workbook = load_workbook(excel_file)
 sheet = workbook.active
 
@@ -12,7 +14,7 @@ sheet = workbook.active
 def read_excel_data():
     """Read all rows of data from the Excel sheet."""
     data = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):  # Assuming first row is header
+    for row in sheet.iter_rows(min_row=2, values_only=True): # Assuming first row is header
         data.append({
             'id': row[0],
             'name': row[1],
@@ -52,12 +54,6 @@ def segregate_by_department():
         department_dict[department].append(employee)
     return department_dict
 
-@app.route('/getByDepartment', methods=['GET'])
-def get_by_department():
-    data = segregate_by_department()
-    return jsonify(data)
-
-
 def delete_excel_row(row_id):
     """Delete a specific row from the Excel sheet."""
     for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row):
@@ -71,6 +67,11 @@ def delete_excel_row(row_id):
 @app.route('/getAllData', methods=['GET'])
 def get_all_data():
     data = read_excel_data()
+    return jsonify(data)
+
+@app.route('/getByDepartment', methods=['GET'])
+def get_by_department():
+    data = segregate_by_department()
     return jsonify(data)
 
 @app.route('/addEmployee', methods=['POST'])
@@ -108,5 +109,84 @@ def delete_employee(emp_id):
     else:
         return jsonify({'error': 'Employee not found'}), 404
 
+@app.route('/selfAssessment', methods=['POST'])
+def self_assessment():
+    data = request.json
+    if not data or 'emp_id' not in data or 'assessment' not in data or 'score' not in data:
+        return jsonify({'error': 'Invalid data'}), 400
+
+    emp_id = data['emp_id']
+    new_entry = f"{data['assessment']} (Score: {data['score']})"
+
+    data_list = read_excel_data()
+    employee = next((emp for emp in data_list if emp['id'] == emp_id), None)
+
+    if employee:
+        previous_assessment = employee.get('self_assessment', "")
+        updated_assessment = previous_assessment + " | " + new_entry if previous_assessment else new_entry
+        update_excel_row(emp_id, {'self_assessment': updated_assessment})
+        return jsonify({'message': 'Self assessment updated successfully'}), 200
+    return jsonify({'error': 'Employee not found'}), 404
+
+@app.route('/hrAssessment', methods=['POST'])
+def hr_assessment():
+    data = request.json
+    if not data or 'emp_id' not in data or 'assessment' not in data or 'score' not in data:
+        return jsonify({'error': 'Invalid data'}), 400
+
+    emp_id = data['emp_id']
+    new_entry = f"{data['assessment']} (Score: {data['score']})"
+
+    data_list = read_excel_data()
+    employee = next((emp for emp in data_list if emp['id'] == emp_id), None)
+
+    if employee:
+        previous_assessment = employee.get('hr_assessment', "")
+        updated_assessment = previous_assessment + " | " + new_entry if previous_assessment else new_entry
+        update_excel_row(emp_id, {'hr_assessment': updated_assessment})
+        return jsonify({'message': 'HR assessment updated successfully'}), 200
+    return jsonify({'error': 'Employee not found'}), 404
+
+@app.route('/getAssessment/<int:emp_id>', methods=['GET'])
+def get_assessment(emp_id):
+    data = read_excel_data()
+    employee = next((emp for emp in data if emp['id'] == emp_id), None)
+
+    if employee:
+        return jsonify({
+            "emp_id": emp_id,
+            "self_assessment": employee.get('self_assessment', ""),
+            "hr_assessment": employee.get('hr_assessment', "")
+        }), 200
+    return jsonify({"error": "Employee not found"}), 404
+
+@app.route('/getEmployeeScore/<int:emp_id>', methods=['GET'])
+def get_employee_score(emp_id):
+    data_list = read_excel_data()
+    employee = next((emp for emp in data_list if emp['id'] == emp_id), None)
+
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
+    input_data = {
+        "skills": employee["skills"], 
+        "experience": employee["experience"], 
+        "education": employee["education"], 
+        "self_assessment": employee["self_assessment"], 
+        "hr_assessment": employee["hr_assessment"]
+    }
+    try:
+        response = requests.post(ML_API_URL, json=input_data)
+        ml_result = response.json()
+        score = ml_result.get("score", None)
+        if score is None:
+            return jsonify({"error": "ML Model Error"}), 500
+
+        return jsonify({
+            "emp_id": emp_id,
+            "ml_score": score
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"ML Server Error: {str(e)}"}), 500
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=8000, debug=True)
