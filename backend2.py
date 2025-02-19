@@ -43,6 +43,31 @@ def update_excel_row(row_id, updated_data):
             return True
     return False
 
+def delete_excel_row(row_id):
+    """Delete a specific row from the Excel sheet."""
+    for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row):
+        if row[0].value == row_id:  # Match by ID
+            sheet.delete_rows(row[0].row)
+            workbook.save(excel_file)
+            return True
+    return False
+
+def calculate_skill_metrics(data):
+    """needed to be filled"""
+    return {
+        "skill_frequencies": {
+            "Skill 1": {"skill": "Python", "frequency": 10},
+            "Skill 2": {"skill": "AWS", "frequency": 8},
+            "Skill 3": {"skill": "SQL", "frequency": 6}
+        },
+        "skill_importance": {
+            "Skill 1": {"skill": "Python", "importance": 9},
+            "Skill 2": {"skill": "AWS", "importance": 7},
+            "Skill 3": {"skill": "SQL", "importance": 8}
+        }
+    }
+    """return format"""
+
 def segregate_by_department():
     """Segregate employees based on their department."""
     data = read_excel_data()
@@ -53,15 +78,6 @@ def segregate_by_department():
             department_dict[department] = []
         department_dict[department].append(employee)
     return department_dict
-
-def delete_excel_row(row_id):
-    """Delete a specific row from the Excel sheet."""
-    for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row):
-        if row[0].value == row_id:  # Match by ID
-            sheet.delete_rows(row[0].row)
-            workbook.save(excel_file)
-            return True
-    return False
 
 # API Endpoints
 @app.route('/getAllData', methods=['GET'])
@@ -101,6 +117,13 @@ def update_employee(emp_id):
         return jsonify({'message': 'Employee updated successfully'}), 200
     else:
         return jsonify({'error': 'Employee not found'}), 404
+
+@app.route('/getSkillMetrics', methods=['GET'])
+def get_skill_metrics():
+    data = read_excel_data()
+    skill_metrics = calculate_skill_metrics(data)
+    return jsonify(skill_metrics)
+
 
 @app.route('/deleteEmployee/<int:emp_id>', methods=['DELETE'])
 def delete_employee(emp_id):
