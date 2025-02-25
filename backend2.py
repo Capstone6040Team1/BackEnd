@@ -7,6 +7,7 @@ ML_API_URL = "http://your-ml-server.com/predict"
 
 # Load the Excel file
 excel_file = r"./emp.xlsx"
+job_excel_file = r"./job_descriptions.xlsx"
 workbook = load_workbook(excel_file)
 sheet = workbook.active
 
@@ -25,6 +26,31 @@ def read_excel_data():
             'department':row[6]
         })
     return data
+
+def read_job_excel_data(file_path, sheet_name="Sheet1"):
+    """Read all rows of job descriptions from the Excel sheet."""
+    
+    wb = load_workbook(filename=file_path, data_only=True)
+    sheet = wb[sheet_name]
+    
+    job_data = []
+    for row in sheet.iter_rows(min_row=2, values_only=True):  # Assuming first row is header
+        job_data.append({
+            'job_id': row[0],
+            'job_title': row[1],
+            'required_skills': row[2].split(',') if row[2] else [],
+            'experience': row[3],  # Expected experience in years
+            'education': row[4],  # Required degree
+            'job_level': row[5],  # Entry/Mid/Senior
+            'certifications': row[6].split(',') if row[6] else []  # Required certifications
+        })
+    
+    wb.close()
+    return job_data
+
+"""Job ID	Job Title	Required Skills	Experience	Education	  Job Level	  Certifications
+   101	  Data Engineer	Python, SQL, AWS   3+ years	 Bachelor's	  Mid-Level	  AWS Certified
+   102	  QA Engineer	 Selenium, Python  5+ years	 Master's	  Senior	  ISTQB"""
 
 def write_to_excel(data):
     """Write a single row of data to the Excel sheet."""
@@ -67,6 +93,21 @@ def calculate_skill_metrics(data):
         }
     }
     """return format"""
+
+def calculate_job_skill(job_data):
+    """Calculate job-related skill metrics from job descriptions."""
+    return {
+        "job_skill_frequencies": {
+            "Skill 1": {"skill": "Python", "frequency": 12},
+            "Skill 2": {"skill": "AWS", "frequency": 9},
+            "Skill 3": {"skill": "SQL", "frequency": 7}
+        },
+        "job_skill_importance": {
+            "Skill 1": {"skill": "Python", "importance": 10},
+            "Skill 2": {"skill": "AWS", "importance": 8},
+            "Skill 3": {"skill": "SQL", "importance": 7}
+        }
+    }
 
 def segregate_by_department():
     """Segregate employees based on their department."""
@@ -210,6 +251,41 @@ def get_employee_score(emp_id):
         }), 200
     except Exception as e:
         return jsonify({"error": f"ML Server Error: {str(e)}"}), 500
+
+@app.route('/finalScore', methods=['GET'])
+def final_score():
+    emp_id = request.args.get('employee_id', type=int)
+    job_id = request.args.get('job_id', type=int)
+
+    # Read employee data
+    employees = read_excel_data()
+    employee = next((e for e in employees if e['id'] == emp_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
+
+    # Read job description data
+    job_descriptions = read_job_excel_data()
+    job_description = next((j for j in job_descriptions if j['job_id'] == job_id), None)
+    if not job_description:
+        return jsonify({"error": "Job description not found"}), 404
+
+    # Calculate employee skill score
+    employee_skill_score = calculate_employee_skill_score(employee)
+
+    # Calculate job skill score
+    job_skill_score = calculate_job_skill_score(job_description)
+
+    # Calculate final score
+    if job_skill_score == 0:
+        final_score = 0  # Avoid division by zero error
+    else:
+        final_score = employee_skill_score / job_skill_score
+
+    return jsonify({
+        "employee_id": emp_id,
+        "job_id": job_id,
+        "final_score": final_score
+    }), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
